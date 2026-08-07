@@ -9,7 +9,7 @@ st.set_page_config(
 
 FILENAME = "salaries.csv"
 
-# --- Полный список колонок ---
+# --- Полный список актуальных колонок (без пенсии) ---
 COLUMNS = [
     "year",
     "month",
@@ -18,7 +18,6 @@ COLUMNS = [
     "tax",
     "bituach_leumi",
     "bituach_briut",
-    "pension",
     "kupat_gemel",
     "shares",
     "other_deductions",
@@ -29,7 +28,6 @@ def load_data():
     if os.path.exists(FILENAME):
         try:
             df = pd.read_csv(FILENAME)
-            # Автоматически добавляем отсутствующие столбцы со значением 0.0
             for col in COLUMNS:
                 if col not in df.columns:
                     df[col] = 0.0
@@ -46,7 +44,7 @@ def save_data(df):
 if "df" not in st.session_state:
     st.session_state.df = load_data()
 
-st.title("💰 מעקב וניתוח משכורות (Учёт и анализ зарплат)")
+st.title("💰 מעקב וניתוח משכורות")
 st.caption("מערכת מעקב והשוואת שכר שנתית וחודשית")
 
 # --- Боковая панель: Ввод данных ---
@@ -79,9 +77,6 @@ with st.sidebar:
         input_health = st.number_input(
             "ביטוח בריאות", min_value=0.0, step=50.0, format="%.2f"
         )
-        input_pension = st.number_input(
-            "פנסיה", min_value=0.0, step=50.0, format="%.2f"
-        )
         input_gemel = st.number_input(
             "קופת גמל", min_value=0.0, step=50.0, format="%.2f"
         )
@@ -106,7 +101,6 @@ if submit_btn:
         "tax": float(input_tax),
         "bituach_leumi": float(input_bl),
         "bituach_briut": float(input_health),
-        "pension": float(input_pension),
         "kupat_gemel": float(input_gemel),
         "shares": float(input_shares),
         "other_deductions": float(input_other),
@@ -126,11 +120,10 @@ if submit_btn:
     st.sidebar.success(f"נשמר בהצלחה עבור {input_month}.{input_year}!")
     st.rerun()
 
-# --- Главная аналитика ---
+# --- Главный блок аналитики ---
 if not st.session_state.df.empty:
     df = st.session_state.df.copy()
 
-    # Проверяем наличие всех нужных колонок
     for col in COLUMNS:
         if col not in df.columns:
             df[col] = 0.0
@@ -138,7 +131,7 @@ if not st.session_state.df.empty:
     tab_all, tab_year, tab_manage = st.tabs(
         [
             "📊 השוואה כללית (Все годы)",
-            "📅 ניתוח לפי שנה (По годам)",
+            "📅 ניתוח לפי שנה (По годаם)",
             "⚙️ ניהול נתונים (Управление)",
         ]
     )
@@ -166,7 +159,7 @@ if not st.session_state.df.empty:
             "שיא נטו שנתי", f"₪{yearly_summary['total_net'].max():,.2f}"
         )
 
-        # Главный график всех лет
+        # График всех лет
         fig_all, ax_all = plt.subplots(figsize=(12, 5))
         years = yearly_summary["year"].astype(str)
         x = range(len(years))
@@ -194,26 +187,6 @@ if not st.session_state.df.empty:
         ax_all.legend()
         ax_all.grid(True, linestyle="--", alpha=0.5)
 
-        for i in x:
-            g_val = yearly_summary["total_gross"].iloc[i]
-            n_val = yearly_summary["total_net"].iloc[i]
-            ax_all.text(
-                i - width / 2,
-                g_val,
-                f"₪{g_val:,.0f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )
-            ax_all.text(
-                i + width / 2,
-                n_val,
-                f"₪{n_val:,.0f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )
-
         st.pyplot(fig_all)
 
         st.write("### טבלת סיכום שנתית")
@@ -235,7 +208,7 @@ if not st.session_state.df.empty:
             use_container_width=True,
         )
 
-    # ==================== ВКЛАДКА 2: Конкретный год ====================
+    # ==================== ВКЛАДКА 2: Выбранный год ====================
     with tab_year:
         available_years = sorted(df["year"].unique(), reverse=True)
         selected_year = st.selectbox(
@@ -285,7 +258,7 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # Безопасное формирование строки Итого (סה"כ)
+        # --- Формирование полной таблицы со всеми столбцами ---
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
         df_year_disp = df_year.copy()
@@ -293,26 +266,33 @@ if not st.session_state.df.empty:
             lambda m: f"{m:02d}.{selected_year}"
         )
 
-        sum_row = {
-            "month": 'סה"כ',
-            "gross": df_year["gross"].sum(),
-            "net": df_year["net"].sum(),
-            "tax": df_year.get("tax", pd.Series([0])).sum(),
-            "bituach_leumi": df_year.get("bituach_leumi", pd.Series([0])).sum(),
-            "bituach_briut": df_year.get("bituach_briut", pd.Series([0])).sum(),
-            "pension": df_year.get("pension", pd.Series([0])).sum(),
-            "kupat_gemel": df_year.get("kupat_gemel", pd.Series([0])).sum(),
-            "shares": df_year.get("shares", pd.Series([0])).sum(),
-            "other_deductions": df_year.get(
-                "other_deductions", pd.Series([0])
-            ).sum(),
-        }
-        df_year_disp = pd.concat(
-            [df_year_disp, pd.DataFrame([sum_row])], ignore_index=True
+        numeric_cols = [
+            "gross",
+            "net",
+            "tax",
+            "bituach_leumi",
+            "bituach_briut",
+            "kupat_gemel",
+            "shares",
+            "other_deductions",
+        ]
+
+        # Строка 1: Итого (סה"כ)
+        sum_row = {"month": 'סה"כ'}
+        for col in numeric_cols:
+            sum_row[col] = df_year[col].sum()
+
+        # Строка 2: Среднее (ממוצע)
+        avg_row = {"month": "ממוצע"}
+        for col in numeric_cols:
+            avg_row[col] = df_year[col].mean()
+
+        df_final = pd.concat(
+            [df_year_disp, pd.DataFrame([sum_row, avg_row])], ignore_index=True
         )
 
-        # Переименование колонок
-        df_year_disp.rename(
+        # Переименование колонок строго под вашу структуру
+        df_final.rename(
             columns={
                 "month": "חודש",
                 "gross": "משכורת ברוטו",
@@ -320,7 +300,6 @@ if not st.session_state.df.empty:
                 "tax": "מס הכנסה",
                 "bituach_leumi": "ביטוח לאומי",
                 "bituach_briut": "ביטוח בריאות",
-                "pension": "פנסיה",
                 "kupat_gemel": "קופת גמל",
                 "shares": "מניות",
                 "other_deductions": "שעות/תוספות",
@@ -334,17 +313,17 @@ if not st.session_state.df.empty:
             "מס הכנסה",
             "ביטוח לאומי",
             "ביטוח בריאות",
-            "פנסיה",
             "קופת גמל",
             "מניות",
             "שעות/תוספות",
         ]
         fmt_dict = {
-            c: "₪{:,.2f}" for c in cols_to_format if c in df_year_disp.columns
+            c: "₪{:,.2f}" for c in cols_to_format if c in df_final.columns
         }
 
+        # Отображение таблицы
         st.dataframe(
-            df_year_disp.drop(columns=["year"], errors="ignore").style.format(
+            df_final.drop(columns=["year"], errors="ignore").style.format(
                 fmt_dict
             ),
             use_container_width=True,
