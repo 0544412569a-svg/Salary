@@ -9,7 +9,7 @@ st.set_page_config(
 
 FILENAME = "salaries.csv"
 
-# --- Полный список актуальных колонок (без пенсии) ---
+# --- Итоговый список нужных колонок ---
 COLUMNS = [
     "year",
     "month",
@@ -20,7 +20,6 @@ COLUMNS = [
     "bituach_briut",
     "kupat_gemel",
     "shares",
-    "other_deductions",
 ]
 
 
@@ -28,17 +27,18 @@ def load_data():
     if os.path.exists(FILENAME):
         try:
             df = pd.read_csv(FILENAME)
+            # Оставляем только нужные столбцы
             for col in COLUMNS:
                 if col not in df.columns:
                     df[col] = 0.0
-            return df
+            return df[COLUMNS]
         except Exception:
             return pd.DataFrame(columns=COLUMNS)
     return pd.DataFrame(columns=COLUMNS)
 
 
 def save_data(df):
-    df.to_csv(FILENAME, index=False)
+    df[COLUMNS].to_csv(FILENAME, index=False)
 
 
 if "df" not in st.session_state:
@@ -83,9 +83,6 @@ with st.sidebar:
         input_shares = st.number_input(
             "מניות", min_value=0.0, step=50.0, format="%.2f"
         )
-        input_other = st.number_input(
-            "שעות/תוספות/ניכויים", min_value=0.0, step=50.0, format="%.2f"
-        )
 
         submit_btn = st.form_submit_button("שמור נתונים (Сохранить)")
 
@@ -103,7 +100,6 @@ if submit_btn:
         "bituach_briut": float(input_health),
         "kupat_gemel": float(input_gemel),
         "shares": float(input_shares),
-        "other_deductions": float(input_other),
     }
 
     if mask.any():
@@ -124,14 +120,10 @@ if submit_btn:
 if not st.session_state.df.empty:
     df = st.session_state.df.copy()
 
-    for col in COLUMNS:
-        if col not in df.columns:
-            df[col] = 0.0
-
     tab_all, tab_year, tab_manage = st.tabs(
         [
             "📊 השוואה כללית (Все годы)",
-            "📅 ניתוח לפי שנה (По годаם)",
+            "📅 ניתוח לפי שנה (По годам)",
             "⚙️ ניהול נתונים (Управление)",
         ]
     )
@@ -258,10 +250,10 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # --- Формирование полной таблицы со всеми столбцами ---
+        # --- Чистая таблица только со свойствами пользователя ---
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
-        df_year_disp = df_year.copy()
+        df_year_disp = df_year[COLUMNS].copy()
         df_year_disp["month"] = df_year_disp["month"].apply(
             lambda m: f"{m:02d}.{selected_year}"
         )
@@ -274,7 +266,6 @@ if not st.session_state.df.empty:
             "bituach_briut",
             "kupat_gemel",
             "shares",
-            "other_deductions",
         ]
 
         # Строка 1: Итого (סה"כ)
@@ -291,7 +282,7 @@ if not st.session_state.df.empty:
             [df_year_disp, pd.DataFrame([sum_row, avg_row])], ignore_index=True
         )
 
-        # Переименование колонок строго под вашу структуру
+        # Переименование колонок
         df_final.rename(
             columns={
                 "month": "חודש",
@@ -302,7 +293,6 @@ if not st.session_state.df.empty:
                 "bituach_briut": "ביטוח בריאות",
                 "kupat_gemel": "קופת גמל",
                 "shares": "מניות",
-                "other_deductions": "שעות/תוספות",
             },
             inplace=True,
         )
@@ -315,13 +305,11 @@ if not st.session_state.df.empty:
             "ביטוח בריאות",
             "קופת גמל",
             "מניות",
-            "שעות/תוספות",
         ]
         fmt_dict = {
             c: "₪{:,.2f}" for c in cols_to_format if c in df_final.columns
         }
 
-        # Отображение таблицы
         st.dataframe(
             df_final.drop(columns=["year"], errors="ignore").style.format(
                 fmt_dict
