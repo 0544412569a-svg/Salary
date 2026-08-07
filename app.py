@@ -110,8 +110,6 @@ with st.sidebar:
     with st.form("salary_form", clear_on_submit=False):
         st.subheader("פירוט נתונים (₪)")
 
-        # Разрешаем любые положительные и отрицательные числа (без min_value)
-        # value=None дает полностью пустое поле
         input_gross = st.number_input(
             "משכורת ברוטו",
             value=def_gross,
@@ -366,7 +364,6 @@ if not st.session_state.df.empty:
 
         # --- Функция стилизации таблицы ---
         def style_dataframe(df_to_style):
-            # Стилизация строки סה"כ и ממוצע
             def highlight_summary_rows(row):
                 if row["חודש"] == 'סה"כ':
                     return [
@@ -378,7 +375,6 @@ if not st.session_state.df.empty:
                     ] * len(row)
                 return [""] * len(row)
 
-            # Красим отрицательные числа в красный цвет
             def color_negative_red(val):
                 if isinstance(val, (int, float)) and val < 0:
                     return "color: #e74c3c; font-weight: bold;"
@@ -401,13 +397,14 @@ if not st.session_state.df.empty:
 
             styler = df_to_style.drop(columns=["year"], errors="ignore").style
 
-            # Применяем подсветку строк
             styler = styler.apply(highlight_summary_rows, axis=1)
 
-            # Применяем красную подсветку отрицательных значений
-            styler = styler.applymap(color_negative_red, subset=cols_to_format)
+            # Используем универсальную логику для поддержки любых версий pandas (map или map_index)
+            if hasattr(styler, "map"):
+                styler = styler.map(color_negative_red, subset=cols_to_format)
+            else:
+                styler = styler.applymap(color_negative_red, subset=cols_to_format)
 
-            # Форматируем валюту
             styler = styler.format(fmt_dict)
 
             return styler
