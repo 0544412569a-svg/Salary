@@ -216,8 +216,8 @@ if not st.session_state.df.empty:
             "שיא נטו שנתי", f"₪{yearly_summary['total_net'].max():,.2f}"
         )
 
-        # График всех лет
-        fig_all, ax_all = plt.subplots(figsize=(12, 5))
+        # График 1: Столбчатый график сравнения сумм по годам
+        fig_all, ax_all = plt.subplots(figsize=(12, 4.5))
         years = yearly_summary["year"].astype(str)
         x = range(len(years))
         width = 0.35
@@ -246,6 +246,44 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_all)
 
+        # --- График 2: Волновой график сравнения נטו по месяцам от года к году ---
+        st.markdown("---")
+        st.subheader("🌊 השוואת נטו חודשי בין השנים (משנה לשנה)")
+
+        fig_wave, ax_wave = plt.subplots(figsize=(12, 5))
+
+        months_list = list(range(1, 13))
+        months_labels = [f"{m:02d}" for m in months_list]
+
+        # Уникальные годы для отрисовки разных линий
+        unique_years = sorted(df["year"].unique())
+
+        for y in unique_years:
+            df_y = df[df["year"] == y]
+            # Заполняем пропущенные месяцы значением None, чтобы линия не прерывалась или корректно строилась
+            net_by_month = []
+            for m in months_list:
+                val = df_y[df_y["month"] == m]["net"]
+                net_by_month.append(val.values[0] if not val.empty else None)
+
+            ax_wave.plot(
+                months_labels,
+                net_by_month,
+                marker="o",
+                linewidth=2.5,
+                markersize=6,
+                label=f"שנת {y}",
+            )
+
+        ax_wave.set_xlabel("חודש (Месяц)")
+        ax_wave.set_ylabel("נטו (₪)")
+        ax_wave.set_title("מגמת נטו חודשית - השוואה לפי שנים")
+        ax_wave.legend(title="שנה")
+        ax_wave.grid(True, linestyle="--", alpha=0.5)
+
+        st.pyplot(fig_wave)
+
+        st.markdown("---")
         st.write("### טבלת סיכום שנתית")
         yearly_disp = yearly_summary.copy()
         yearly_disp.columns = [
@@ -289,7 +327,7 @@ if not st.session_state.df.empty:
         c2.metric(f"סה\"כ נטו {selected_year}", f"₪{y_net_sum:,.2f}")
         c3.metric(f"ממוצע נטו לחודש", f"₪{y_net_avg:,.2f}")
 
-        # График
+        # График за выбранный год
         fig_y, ax_y = plt.subplots(figsize=(11, 4.5))
         m_labels = [f"{m:02d}.{selected_year}" for m in df_year["month"]]
 
@@ -399,7 +437,6 @@ if not st.session_state.df.empty:
 
             styler = styler.apply(highlight_summary_rows, axis=1)
 
-            # Используем универсальную логику для поддержки любых версий pandas (map или map_index)
             if hasattr(styler, "map"):
                 styler = styler.map(color_negative_red, subset=cols_to_format)
             else:
