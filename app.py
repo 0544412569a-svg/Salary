@@ -9,7 +9,7 @@ st.set_page_config(
 
 FILENAME = "salaries.csv"
 
-# --- Итоговый список нужных колонок ---
+# --- Список нужных колонок ---
 COLUMNS = [
     "year",
     "month",
@@ -27,7 +27,6 @@ def load_data():
     if os.path.exists(FILENAME):
         try:
             df = pd.read_csv(FILENAME)
-            # Оставляем только нужные столбцы
             for col in COLUMNS:
                 if col not in df.columns:
                     df[col] = 0.0
@@ -47,44 +46,87 @@ if "df" not in st.session_state:
 st.title("💰 מעקב וניתוח משכורות")
 st.caption("מערכת מעקב והשוואת שכר שנתית וחודשית")
 
-# --- Боковая панель: Ввод данных ---
+# --- Боковая панель: Ввод и редактирование данных ---
 with st.sidebar:
     st.header("➕ הוספת / עדכון חודש")
-    with st.form("salary_form", clear_on_submit=False):
-        col_y, col_m = st.columns(2)
-        with col_y:
-            input_year = st.number_input(
-                "שנה (Год)", min_value=2015, max_value=2035, value=2026, step=1
-            )
-        with col_m:
-            input_month = st.selectbox(
-                "חודש (Месяц)", options=list(range(1, 13))
-            )
 
+    # Выбор года и месяца до формы, чтобы сразу подгрузить существующие данные
+    col_y, col_m = st.columns(2)
+    with col_y:
+        input_year = st.number_input(
+            "שנה (Год)", min_value=2015, max_value=2035, value=2026, step=1
+        )
+    with col_m:
+        input_month = st.selectbox("חודש (Месяц)", options=list(range(1, 13)))
+
+    # Проверка: есть ли уже данные за этот месяц и год
+    df_curr = st.session_state.df.copy()
+    existing_row = df_curr[
+        (df_curr["year"] == input_year) & (df_curr["month"] == input_month)
+    ]
+
+    is_edit = not existing_row.empty
+    if is_edit:
+        st.info(f"✏️ עריכת נתונים קיימים עבור {input_month}.{input_year}")
+        row_data = existing_row.iloc[0]
+        def_gross = float(row_data.get("gross", 0.0))
+        def_net = float(row_data.get("net", 0.0))
+        def_tax = float(row_data.get("tax", 0.0))
+        def_bl = float(row_data.get("bituach_leumi", 0.0))
+        def_health = float(row_data.get("bituach_briut", 0.0))
+        def_gemel = float(row_data.get("kupat_gemel", 0.0))
+        def_shares = float(row_data.get("shares", 0.0))
+    else:
+        st.caption(f"🆕 הוספת חודש חדש: {input_month}.{input_year}")
+        def_gross = 0.0
+        def_net = 0.0
+        def_tax = 0.0
+        def_bl = 0.0
+        def_health = 0.0
+        def_gemel = 0.0
+        def_shares = 0.0
+
+    # Чекбокс: очищать ли форму после ввода
+    clear_after_submit = st.checkbox("איפוס טופס לאחר שמירה (Очищать форму)")
+
+    with st.form("salary_form", clear_on_submit=clear_after_submit):
         st.subheader("פירוט נתונים (₪)")
         input_gross = st.number_input(
-            "משכורת ברוטו", min_value=0.0, step=100.0, format="%.2f"
+            "משכורת ברוטו",
+            min_value=0.0,
+            value=def_gross,
+            step=100.0,
+            format="%.2f",
         )
         input_net = st.number_input(
-            "נטו", min_value=0.0, step=100.0, format="%.2f"
+            "נטו", min_value=0.0, value=def_net, step=100.0, format="%.2f"
         )
         input_tax = st.number_input(
-            "מס הכנסה", min_value=0.0, step=50.0, format="%.2f"
+            "מס הכנסה", min_value=0.0, value=def_tax, step=50.0, format="%.2f"
         )
         input_bl = st.number_input(
-            "ביטוח לאומי", min_value=0.0, step=50.0, format="%.2f"
+            "ביטוח לאומי", min_value=0.0, value=def_bl, step=50.0, format="%.2f"
         )
         input_health = st.number_input(
-            "ביטוח בריאות", min_value=0.0, step=50.0, format="%.2f"
+            "ביטוח בריאות",
+            min_value=0.0,
+            value=def_health,
+            step=50.0,
+            format="%.2f",
         )
         input_gemel = st.number_input(
-            "קופת גמל", min_value=0.0, step=50.0, format="%.2f"
+            "קופת גמל", min_value=0.0, value=def_gemel, step=50.0, format="%.2f"
         )
         input_shares = st.number_input(
-            "מניות", min_value=0.0, step=50.0, format="%.2f"
+            "מניות", min_value=0.0, value=def_shares, step=50.0, format="%.2f"
         )
 
-        submit_btn = st.form_submit_button("שמור נתונים (Сохранить)")
+        btn_text = (
+            "עדכן נתונים (Обновить)"
+            if is_edit
+            else "שמור נתונים (Сохранить)"
+        )
+        submit_btn = st.form_submit_button(btn_text)
 
 if submit_btn:
     df_curr = st.session_state.df.copy()
@@ -250,7 +292,7 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # --- Чистая таблица только со свойствами пользователя ---
+        # --- Формирование таблицы ---
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
         df_year_disp = df_year[COLUMNS].copy()
