@@ -9,7 +9,7 @@ st.set_page_config(
 
 FILENAME = "salaries.csv"
 
-# --- Обновленный список колонок ---
+# --- Полный список колонок ---
 COLUMNS = [
     "year",
     "month",
@@ -29,6 +29,7 @@ def load_data():
     if os.path.exists(FILENAME):
         try:
             df = pd.read_csv(FILENAME)
+            # Автоматически добавляем отсутствующие столбцы со значением 0.0
             for col in COLUMNS:
                 if col not in df.columns:
                     df[col] = 0.0
@@ -128,6 +129,11 @@ if submit_btn:
 # --- Главная аналитика ---
 if not st.session_state.df.empty:
     df = st.session_state.df.copy()
+
+    # Проверяем наличие всех нужных колонок
+    for col in COLUMNS:
+        if col not in df.columns:
+            df[col] = 0.0
 
     tab_all, tab_year, tab_manage = st.tabs(
         [
@@ -279,7 +285,7 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # Таблица Excel с вашими точными колонками
+        # Безопасное формирование строки Итого (סה"כ)
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
         df_year_disp = df_year.copy()
@@ -287,24 +293,25 @@ if not st.session_state.df.empty:
             lambda m: f"{m:02d}.{selected_year}"
         )
 
-        # Строка Итого (סה"כ)
         sum_row = {
             "month": 'סה"כ',
             "gross": df_year["gross"].sum(),
             "net": df_year["net"].sum(),
-            "tax": df_year["tax"].sum(),
-            "bituach_leumi": df_year["bituach_leumi"].sum(),
-            "bituach_briut": df_year["bituach_briut"].sum(),
-            "pension": df_year["pension"].sum(),
-            "kupat_gemel": df_year["kupat_gemel"].sum(),
-            "shares": df_year["shares"].sum(),
-            "other_deductions": df_year["other_deductions"].sum(),
+            "tax": df_year.get("tax", pd.Series([0])).sum(),
+            "bituach_leumi": df_year.get("bituach_leumi", pd.Series([0])).sum(),
+            "bituach_briut": df_year.get("bituach_briut", pd.Series([0])).sum(),
+            "pension": df_year.get("pension", pd.Series([0])).sum(),
+            "kupat_gemel": df_year.get("kupat_gemel", pd.Series([0])).sum(),
+            "shares": df_year.get("shares", pd.Series([0])).sum(),
+            "other_deductions": df_year.get(
+                "other_deductions", pd.Series([0])
+            ).sum(),
         }
         df_year_disp = pd.concat(
             [df_year_disp, pd.DataFrame([sum_row])], ignore_index=True
         )
 
-        # Переименование колонок строго на иврит
+        # Переименование колонок
         df_year_disp.rename(
             columns={
                 "month": "חודש",
@@ -332,7 +339,9 @@ if not st.session_state.df.empty:
             "מניות",
             "שעות/תוספות",
         ]
-        fmt_dict = {c: "₪{:,.2f}" for c in cols_to_format}
+        fmt_dict = {
+            c: "₪{:,.2f}" for c in cols_to_format if c in df_year_disp.columns
+        }
 
         st.dataframe(
             df_year_disp.drop(columns=["year"], errors="ignore").style.format(
