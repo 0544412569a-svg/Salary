@@ -50,7 +50,6 @@ st.caption("מערכת מעקב והשוואת שכר שנתית וחודשית"
 with st.sidebar:
     st.header("➕ הוספת / עדכון חודש")
 
-    # Выбор года и месяца до формы, чтобы сразу подгрузить существующие данные
     col_y, col_m = st.columns(2)
     with col_y:
         input_year = st.number_input(
@@ -59,7 +58,7 @@ with st.sidebar:
     with col_m:
         input_month = st.selectbox("חודש (Месяц)", options=list(range(1, 13)))
 
-    # Проверка: есть ли уже данные за этот месяц и год
+    # Проверка существования записи за выбранный период
     df_curr = st.session_state.df.copy()
     existing_row = df_curr[
         (df_curr["year"] == input_year) & (df_curr["month"] == input_month)
@@ -69,56 +68,82 @@ with st.sidebar:
     if is_edit:
         st.info(f"✏️ עריכת נתונים קיימים עבור {input_month}.{input_year}")
         row_data = existing_row.iloc[0]
-        def_gross = float(row_data.get("gross", 0.0))
-        def_net = float(row_data.get("net", 0.0))
-        def_tax = float(row_data.get("tax", 0.0))
-        def_bl = float(row_data.get("bituach_leumi", 0.0))
-        def_health = float(row_data.get("bituach_briut", 0.0))
-        def_gemel = float(row_data.get("kupat_gemel", 0.0))
-        def_shares = float(row_data.get("shares", 0.0))
+        def_gross = (
+            float(row_data["gross"]) if pd.notnull(row_data["gross"]) else None
+        )
+        def_net = (
+            float(row_data["net"]) if pd.notnull(row_data["net"]) else None
+        )
+        def_tax = (
+            float(row_data["tax"]) if pd.notnull(row_data["tax"]) else None
+        )
+        def_bl = (
+            float(row_data["bituach_leumi"])
+            if pd.notnull(row_data["bituach_leumi"])
+            else None
+        )
+        def_health = (
+            float(row_data["bituach_briut"])
+            if pd.notnull(row_data["bituach_briut"])
+            else None
+        )
+        def_gemel = (
+            float(row_data["kupat_gemel"])
+            if pd.notnull(row_data["kupat_gemel"])
+            else None
+        )
+        def_shares = (
+            float(row_data["shares"])
+            if pd.notnull(row_data["shares"])
+            else None
+        )
     else:
         st.caption(f"🆕 הוספת חודש חדש: {input_month}.{input_year}")
-        def_gross = 0.0
-        def_net = 0.0
-        def_tax = 0.0
-        def_bl = 0.0
-        def_health = 0.0
-        def_gemel = 0.0
-        def_shares = 0.0
+        def_gross = None
+        def_net = None
+        def_tax = None
+        def_bl = None
+        def_health = None
+        def_gemel = None
+        def_shares = None
 
-    # Чекбокс: очищать ли форму после ввода
-    clear_after_submit = st.checkbox("איפוס טופס לאחר שמירה (Очищать форму)")
-
-    with st.form("salary_form", clear_on_submit=clear_after_submit):
+    with st.form("salary_form", clear_on_submit=False):
         st.subheader("פירוט נתונים (₪)")
+
+        # Разрешаем любые положительные и отрицательные числа (без min_value)
+        # value=None дает полностью пустое поле
         input_gross = st.number_input(
             "משכורת ברוטו",
-            min_value=0.0,
             value=def_gross,
             step=100.0,
             format="%.2f",
+            placeholder="0.00",
         )
         input_net = st.number_input(
-            "נטו", min_value=0.0, value=def_net, step=100.0, format="%.2f"
+            "נטו", value=def_net, step=100.0, format="%.2f", placeholder="0.00"
         )
         input_tax = st.number_input(
-            "מס הכנסה", min_value=0.0, value=def_tax, step=50.0, format="%.2f"
+            "מס הכנסה", value=def_tax, step=50.0, format="%.2f", placeholder="0.00"
         )
         input_bl = st.number_input(
-            "ביטוח לאומי", min_value=0.0, value=def_bl, step=50.0, format="%.2f"
+            "ביטוח לאומי", value=def_bl, step=50.0, format="%.2f", placeholder="0.00"
         )
         input_health = st.number_input(
             "ביטוח בריאות",
-            min_value=0.0,
             value=def_health,
             step=50.0,
             format="%.2f",
+            placeholder="0.00",
         )
         input_gemel = st.number_input(
-            "קופת גמל", min_value=0.0, value=def_gemel, step=50.0, format="%.2f"
+            "קופת גמל",
+            value=def_gemel,
+            step=50.0,
+            format="%.2f",
+            placeholder="0.00",
         )
         input_shares = st.number_input(
-            "מניות", min_value=0.0, value=def_shares, step=50.0, format="%.2f"
+            "מניות", value=def_shares, step=50.0, format="%.2f", placeholder="0.00"
         )
 
         btn_text = (
@@ -135,13 +160,13 @@ if submit_btn:
     new_data = {
         "year": int(input_year),
         "month": int(input_month),
-        "gross": float(input_gross),
-        "net": float(input_net),
-        "tax": float(input_tax),
-        "bituach_leumi": float(input_bl),
-        "bituach_briut": float(input_health),
-        "kupat_gemel": float(input_gemel),
-        "shares": float(input_shares),
+        "gross": float(input_gross) if input_gross is not None else 0.0,
+        "net": float(input_net) if input_net is not None else 0.0,
+        "tax": float(input_tax) if input_tax is not None else 0.0,
+        "bituach_leumi": float(input_bl) if input_bl is not None else 0.0,
+        "bituach_briut": float(input_health) if input_health is not None else 0.0,
+        "kupat_gemel": float(input_gemel) if input_gemel is not None else 0.0,
+        "shares": float(input_shares) if input_shares is not None else 0.0,
     }
 
     if mask.any():
@@ -165,7 +190,7 @@ if not st.session_state.df.empty:
     tab_all, tab_year, tab_manage = st.tabs(
         [
             "📊 השוואה כללית (Все годы)",
-            "📅 ניתוח לפי שנה (По годам)",
+            "📅 ניתוח לפי שנה (По годаם)",
             "⚙️ ניהול נתונים (Управление)",
         ]
     )
@@ -266,7 +291,7 @@ if not st.session_state.df.empty:
         c2.metric(f"סה\"כ נטו {selected_year}", f"₪{y_net_sum:,.2f}")
         c3.metric(f"ממוצע נטו לחודש", f"₪{y_net_avg:,.2f}")
 
-        # График за выбранный год
+        # График
         fig_y, ax_y = plt.subplots(figsize=(11, 4.5))
         m_labels = [f"{m:02d}.{selected_year}" for m in df_year["month"]]
 
@@ -292,7 +317,7 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # --- Формирование таблицы ---
+        # --- Формирование и стилизация таблицы ---
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
         df_year_disp = df_year[COLUMNS].copy()
@@ -339,25 +364,55 @@ if not st.session_state.df.empty:
             inplace=True,
         )
 
-        cols_to_format = [
-            "משכורת ברוטו",
-            "נטו",
-            "מס הכנסה",
-            "ביטוח לאומי",
-            "ביטוח בריאות",
-            "קופת גמל",
-            "מניות",
-        ]
-        fmt_dict = {
-            c: "₪{:,.2f}" for c in cols_to_format if c in df_final.columns
-        }
+        # --- Функция стилизации таблицы ---
+        def style_dataframe(df_to_style):
+            # Стилизация строки סה"כ и ממוצע
+            def highlight_summary_rows(row):
+                if row["חודש"] == 'סה"כ':
+                    return [
+                        "background-color: #d0e1f9; font-weight: bold; color: #000000;"
+                    ] * len(row)
+                elif row["חודש"] == "ממוצע":
+                    return [
+                        "background-color: #e6e6e6; font-weight: bold; color: #000000;"
+                    ] * len(row)
+                return [""] * len(row)
 
-        st.dataframe(
-            df_final.drop(columns=["year"], errors="ignore").style.format(
-                fmt_dict
-            ),
-            use_container_width=True,
-        )
+            # Красим отрицательные числа в красный цвет
+            def color_negative_red(val):
+                if isinstance(val, (int, float)) and val < 0:
+                    return "color: #e74c3c; font-weight: bold;"
+                return ""
+
+            cols_to_format = [
+                "משכורת ברוטו",
+                "נטו",
+                "מס הכנסה",
+                "ביטוח לאומי",
+                "ביטוח בריאות",
+                "קופת גמל",
+                "מניות",
+            ]
+            fmt_dict = {
+                c: "₪{:,.2f}"
+                for c in cols_to_format
+                if c in df_to_style.columns
+            }
+
+            styler = df_to_style.drop(columns=["year"], errors="ignore").style
+
+            # Применяем подсветку строк
+            styler = styler.apply(highlight_summary_rows, axis=1)
+
+            # Применяем красную подсветку отрицательных значений
+            styler = styler.applymap(color_negative_red, subset=cols_to_format)
+
+            # Форматируем валюту
+            styler = styler.format(fmt_dict)
+
+            return styler
+
+        st.dataframe(style_dataframe(df_final), use_container_width=True)
 
     # ==================== ВКЛАДКА 3: Управление ====================
     with tab_manage:
