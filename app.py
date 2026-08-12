@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+from webdav3.client import Client
 
 st.set_page_config(
     page_title="מעקב וניתוח משכורות", page_icon="💰", layout="wide"
@@ -9,7 +10,15 @@ st.set_page_config(
 
 FILENAME = "salaries.csv"
 
-# --- Список нужных колонок ---
+# --- Настройка подключения к Облаку Mail.ru через WebDAV ---
+options = {
+    "webdav_hostname": "https://webdav.cloud.mail.ru",
+    "webdav_login": st.secrets.get("MAILRU_EMAIL", ""),
+    "webdav_password": st.secrets.get("MAILRU_PASSWORD", ""),
+}
+
+client = Client(options)
+
 COLUMNS = [
     "year",
     "month",
@@ -24,27 +33,39 @@ COLUMNS = [
 
 
 def load_data():
-    if os.path.exists(FILENAME):
-        try:
+    """Скачивает файл из Mail.ru Облака при запуске приложения"""
+    try:
+        # Скачиваем salaries.csv из облака в локальный файл
+        if client.check(FILENAME):
+            client.download_sync(remote_path=FILENAME, local_path=FILENAME)
+
+        if os.path.exists(FILENAME):
             df = pd.read_csv(FILENAME)
             for col in COLUMNS:
                 if col not in df.columns:
                     df[col] = 0.0
             return df[COLUMNS]
-        except Exception:
-            return pd.DataFrame(columns=COLUMNS)
+    except Exception as e:
+        st.error(f"שגיאה בחיבור ל-Mail.ru Cloud: {e}")
+
     return pd.DataFrame(columns=COLUMNS)
 
 
 def save_data(df):
-    df[COLUMNS].to_csv(FILENAME, index=False)
+    """Сохраняет файл локально и загружает его обратно в Облако Mail.ru"""
+    try:
+        df[COLUMNS].to_csv(FILENAME, index=False)
+        # Загружаем сохраненный CSV обратно в Облако Mail.ru
+        client.upload_sync(remote_path=FILENAME, local_path=FILENAME)
+    except Exception as e:
+        st.error(f"שגיאה בשמירה ל-Mail.ru Cloud: {e}")
 
 
 if "df" not in st.session_state:
     st.session_state.df = load_data()
 
 st.title("💰 מעקב וניתוח משכורות")
-st.caption("מערכת מעקב והשוואת שכר שנתית וחודשית")
+st.caption("מערכת מעקב והשוואת שכר (סנכרון אוטומטי מול Mail.ru Cloud)")
 
 # --- Боковая панель: Ввод и редактирование данных ---
 with st.sidebar:
@@ -58,7 +79,6 @@ with st.sidebar:
     with col_m:
         input_month = st.selectbox("חודש (Месяц)", options=list(range(1, 13)))
 
-    # Проверка существования записи за выбранный период
     df_curr = st.session_state.df.copy()
     existing_row = df_curr[
         (df_curr["year"] == input_year) & (df_curr["month"] == input_month)
@@ -176,9 +196,13 @@ if submit_btn:
         )
 
     df_curr = df_curr.sort_values(by=["year", "month"]).reset_index(drop=True)
-    st.session_state.df = df_curr
+
+    # Сохраняем локально и в Mail.ru Cloud
     save_data(df_curr)
-    st.sidebar.success(f"נשמר בהצלחה עבור {input_month}.{input_year}!")
+    st.session_state.df = df_curr
+    st.sidebar.success(
+        f"נשמר בהצלחה ב-Mail.ru Cloud עבור {input_month}.{input_year}!"
+    )
     st.rerun()
 
 # --- Главный блок аналитики ---
@@ -216,7 +240,6 @@ if not st.session_state.df.empty:
             "שיא נטו שנתי", f"₪{yearly_summary['total_net'].max():,.2f}"
         )
 
-        # График 1: Столбчатый график сравнения сумм по годам
         fig_all, ax_all = plt.subplots(figsize=(12, 4.5))
         years = yearly_summary["year"].astype(str)
         x = range(len(years))
@@ -246,21 +269,17 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_all)
 
-        # --- График 2: Волновой график сравнения נטו по месяцам от года к году ---
+        # Волновой график נטו
         st.markdown("---")
         st.subheader("🌊 השוואת נטו חודשי בין השנים (משנה לשנה)")
 
         fig_wave, ax_wave = plt.subplots(figsize=(12, 5))
-
         months_list = list(range(1, 13))
         months_labels = [f"{m:02d}" for m in months_list]
-
-        # Уникальные годы для отрисовки разных линий
         unique_years = sorted(df["year"].unique())
 
         for y in unique_years:
             df_y = df[df["year"] == y]
-            # Заполняем пропущенные месяцы значением None, чтобы линия не прерывалась или корректно строилась
             net_by_month = []
             for m in months_list:
                 val = df_y[df_y["month"] == m]["net"]
@@ -288,15 +307,15 @@ if not st.session_state.df.empty:
         yearly_disp = yearly_summary.copy()
         yearly_disp.columns = [
             "שנה",
-            "סה\"כ ברוטו",
-            "סה\"כ נטו",
+            'סה"כ ברוטו',
+            'סה"כ נטו',
             "ממוצע נטו חודשי",
         ]
         st.dataframe(
             yearly_disp.style.format(
                 {
-                    "סה\"כ ברוטו": "₪{:,.2f}",
-                    "סה\"כ נטו": "₪{:,.2f}",
+                    'סה"כ ברוטו': "₪{:,.2f}",
+                    'סה"כ נטו': "₪{:,.2f}",
                     "ממוצע נטו חודשי": "₪{:,.2f}",
                 }
             ),
@@ -323,11 +342,10 @@ if not st.session_state.df.empty:
         y_net_avg = df_year["net"].mean()
 
         c1, c2, c3 = st.columns(3)
-        c1.metric(f"סה\"כ ברוטו {selected_year}", f"₪{y_gross_sum:,.2f}")
-        c2.metric(f"סה\"כ נטו {selected_year}", f"₪{y_net_sum:,.2f}")
+        c1.metric(f'סה"כ ברוטו {selected_year}', f"₪{y_gross_sum:,.2f}")
+        c2.metric(f'סה"כ נטו {selected_year}', f"₪{y_net_sum:,.2f}")
         c3.metric(f"ממוצע נטו לחודש", f"₪{y_net_avg:,.2f}")
 
-        # График за выбранный год
         fig_y, ax_y = plt.subplots(figsize=(11, 4.5))
         m_labels = [f"{m:02d}.{selected_year}" for m in df_year["month"]]
 
@@ -353,7 +371,7 @@ if not st.session_state.df.empty:
 
         st.pyplot(fig_y)
 
-        # --- Формирование и стилизация таблицы ---
+        # Таблица
         st.write(f"### טבלת נתונים לשנת {selected_year}")
 
         df_year_disp = df_year[COLUMNS].copy()
@@ -371,12 +389,10 @@ if not st.session_state.df.empty:
             "shares",
         ]
 
-        # Строка 1: Итого (סה"כ)
         sum_row = {"month": 'סה"כ'}
         for col in numeric_cols:
             sum_row[col] = df_year[col].sum()
 
-        # Строка 2: Среднее (ממוצע)
         avg_row = {"month": "ממוצע"}
         for col in numeric_cols:
             avg_row[col] = df_year[col].mean()
@@ -385,7 +401,6 @@ if not st.session_state.df.empty:
             [df_year_disp, pd.DataFrame([sum_row, avg_row])], ignore_index=True
         )
 
-        # Переименование колонок
         df_final.rename(
             columns={
                 "month": "חודש",
@@ -400,7 +415,6 @@ if not st.session_state.df.empty:
             inplace=True,
         )
 
-        # --- Функция стилизации таблицы ---
         def style_dataframe(df_to_style):
             def highlight_summary_rows(row):
                 if row["חודש"] == 'סה"כ':
@@ -412,11 +426,6 @@ if not st.session_state.df.empty:
                         "background-color: #e6e6e6; font-weight: bold; color: #000000;"
                     ] * len(row)
                 return [""] * len(row)
-
-            def color_negative_red(val):
-                if isinstance(val, (int, float)) and val < 0:
-                    return "color: #e74c3c; font-weight: bold;"
-                return ""
 
             cols_to_format = [
                 "משכורת ברוטו",
@@ -434,31 +443,20 @@ if not st.session_state.df.empty:
             }
 
             styler = df_to_style.drop(columns=["year"], errors="ignore").style
-
             styler = styler.apply(highlight_summary_rows, axis=1)
-
-            if hasattr(styler, "map"):
-                styler = styler.map(color_negative_red, subset=cols_to_format)
-            else:
-                styler = styler.applymap(color_negative_red, subset=cols_to_format)
-
             styler = styler.format(fmt_dict)
-
             return styler
 
         st.dataframe(style_dataframe(df_final), use_container_width=True)
 
     # ==================== ВКЛАДКА 3: Управление ====================
     with tab_manage:
-        st.subheader("📥 הורדת נתונים ומחיקה")
+        st.subheader("📥 ניהול נתונים")
 
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 הורד את כל הנתונים בקובץ CSV (Скачать CSV)",
-            data=csv_bytes,
-            file_name="salaries_data.csv",
-            mime="text/csv",
-        )
+        if st.button("🔄 רענן נתונים מ-Mail.ru Cloud"):
+            st.session_state.df = load_data()
+            st.success("הנתונים עודכנו!")
+            st.rerun()
 
         st.markdown("---")
         st.write("### מחיקת רשומה (Удаление записи)")
@@ -473,8 +471,8 @@ if not st.session_state.df.empty:
         if st.button("❌ מחק רשומה (Удалить)"):
             idx = del_options.index(selected_del)
             df_updated = df.drop(df.index[idx]).reset_index(drop=True)
-            st.session_state.df = df_updated
             save_data(df_updated)
+            st.session_state.df = df_updated
             st.success("הרשומה נמחקה בהצלחה!")
             st.rerun()
 else:
